@@ -28,7 +28,7 @@ int reverse(int N, int n) {
 }
 
 void ordina(std::complex<float>* f1, int N) {
-    std::complex<float> f2[kMaxSamplesPerFrame];
+    std::complex<float> f2[WaveShare::kMaxSamplesPerFrame];
     for(int i = 0; i < N; i++)
         f2[i] = f1[reverse(N, i)];
     for(int j = 0; j < N; j++)
@@ -74,7 +74,10 @@ void FFT(float * src, std::complex<float>* dst, int N, float d) {
     FFT(dst, N, d);
 }
 
-inline void addAmplitudeSmooth(const AmplitudeData & src, AmplitudeData & dst, float scalar, int startId, int finalId, int cycleMod, int nPerCycle) {
+inline void addAmplitudeSmooth(
+        const WaveShare::AmplitudeData & src,
+        WaveShare::AmplitudeData & dst,
+        float scalar, int startId, int finalId, int cycleMod, int nPerCycle) {
     int nTotal = nPerCycle*finalId;
     float frac = 0.15f;
     float ds = frac*nTotal;
@@ -104,7 +107,7 @@ int getECCBytesForLength(int len) {
 
 }
 
-DataRxTx::DataRxTx(
+WaveShare::WaveShare(
         int aSampleRateIn,
         int aSampleRateOut,
         int aSamplesPerFrame,
@@ -120,10 +123,26 @@ DataRxTx::DataRxTx(
     init(0, "");
 }
 
-void DataRxTx::init(int textLength, const char * stext) {
-    if (textLength > ::kMaxLength) {
+bool WaveShare::setParameters(
+        int aParamFreqDelta,
+        int aParamFreqStart,
+        int aParamFramesPerTx,
+        int aParamBytesPerTx,
+        int aParamVolume) {
+
+    paramFreqDelta = aParamFreqDelta;
+    paramFreqStart = aParamFreqStart;
+    paramFramesPerTx = aParamFramesPerTx;
+    paramBytesPerTx = aParamBytesPerTx;
+    paramVolume = aParamVolume;
+
+    return true;
+}
+
+bool WaveShare::init(int textLength, const char * stext) {
+    if (textLength > kMaxLength) {
         printf("Truncating data from %d to 140 bytes\n", textLength);
-        textLength = ::kMaxLength;
+        textLength = kMaxLength;
     }
 
     const uint8_t * text = reinterpret_cast<const uint8_t *>(stext);
@@ -138,7 +157,7 @@ void DataRxTx::init(int textLength, const char * stext) {
     framesPerTx = paramFramesPerTx;
 
     nDataBitsPerTx = paramBytesPerTx*8;
-    nECCBytesPerTx = (txMode == ::TxMode::FixedLength) ? paramECCBytesPerTx : getECCBytesForLength(textLength);
+    nECCBytesPerTx = (txMode == TxMode::FixedLength) ? paramECCBytesPerTx : getECCBytesForLength(textLength);
 
     framesToAnalyze = 0;
     framesLeftToAnalyze = 0;
@@ -147,7 +166,7 @@ void DataRxTx::init(int textLength, const char * stext) {
     nBitsInMarker = 16;
     nMarkerFrames = 16;
     nPostMarkerFrames = 0;
-    sendDataLength = (txMode == ::TxMode::FixedLength) ? ::kDefaultFixedLength : textLength + 3;
+    sendDataLength = (txMode == TxMode::FixedLength) ? kDefaultFixedLength : textLength + 3;
 
     freqDelta_bin = paramFreqDelta/2;
     freqDelta_hz = hzPerFrame*paramFreqDelta;
@@ -158,7 +177,9 @@ void DataRxTx::init(int textLength, const char * stext) {
     }
 
     outputBlock.fill(0);
-    encodedData.fill(0);
+
+    txData.fill(0);
+    txDataEncoded.fill(0);
 
     for (int k = 0; k < (int) phaseOffsets.size(); ++k) {
         phaseOffsets[k] = (M_PI*k)/(nDataBitsPerTx);
@@ -187,7 +208,7 @@ void DataRxTx::init(int textLength, const char * stext) {
     if (rsData) delete rsData;
     if (rsLength) delete rsLength;
 
-    if (txMode == ::TxMode::FixedLength) {
+    if (txMode == TxMode::FixedLength) {
         rsData = new RS::ReedSolomon(kDefaultFixedLength, nECCBytesPerTx);
         rsLength = nullptr;
     } else {
@@ -196,17 +217,14 @@ void DataRxTx::init(int textLength, const char * stext) {
     }
 
     if (textLength > 0) {
-        static std::array<char, ::kMaxDataSize> theData;
-        theData.fill(0);
-
-        if (txMode == ::TxMode::FixedLength) {
-            for (int i = 0; i < textLength; ++i) theData[i] = text[i];
-            rsData->Encode(theData.data(), encodedData.data());
+        if (txMode == TxMode::FixedLength) {
+            for (int i = 0; i < textLength; ++i) txData[i] = text[i];
+            rsData->Encode(txData.data(), txDataEncoded.data());
         } else {
-            theData[0] = textLength;
-            for (int i = 0; i < textLength; ++i) theData[i + 1] = text[i];
-            rsData->Encode(theData.data() + 1, encodedData.data() + 3);
-            rsLength->Encode(theData.data(), encodedData.data());
+            txData[0] = textLength;
+            for (int i = 0; i < textLength; ++i) txData[i + 1] = text[i];
+            rsData->Encode(txData.data() + 1, txDataEncoded.data() + 3);
+            rsLength->Encode(txData.data(), txDataEncoded.data());
         }
 
         hasData = true;
@@ -229,9 +247,11 @@ void DataRxTx::init(int textLength, const char * stext) {
         fftOut[i].real(0.0f);
         fftOut[i].imag(0.0f);
     }
+
+    return true;
 }
 
-void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
+void WaveShare::send(const CBQueueAudio & cbQueueAudio) {
     int samplesPerFrameOut = (sampleRateOut/sampleRateIn)*samplesPerFrame;
     if (sampleRateOut != sampleRateIn) {
         printf("Resampling from %d Hz to %d Hz\n", (int) sampleRateIn, (int) sampleRateOut);
@@ -293,7 +313,7 @@ void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
             if (paramFreqDelta > 1) {
                 for (int j = 0; j < nBytesPerTx; ++j) {
                     for (int i = 0; i < 8; ++i) {
-                        dataBits[j*8 + i] = encodedData[dataOffset + j] & (1 << i);
+                        dataBits[j*8 + i] = txDataEncoded[dataOffset + j] & (1 << i);
                     }
                 }
 
@@ -308,11 +328,11 @@ void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
             } else {
                 for (int j = 0; j < nBytesPerTx; ++j) {
                     {
-                        uint8_t d = encodedData[dataOffset + j] & 15;
+                        uint8_t d = txDataEncoded[dataOffset + j] & 15;
                         dataBits[(2*j + 0)*16 + d] = 1;
                     }
                     {
-                        uint8_t d = encodedData[dataOffset + j] & 240;
+                        uint8_t d = txDataEncoded[dataOffset + j] & 240;
                         dataBits[(2*j + 1)*16 + (d >> 4)] = 1;
                     }
                 }
@@ -328,7 +348,7 @@ void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
                     }
                 }
             }
-        } else if (txMode == ::TxMode::VariableLength && frameId <
+        } else if (txMode == TxMode::VariableLength && frameId <
                    (nMarkerFrames + nPostMarkerFrames) +
                    ((sendDataLength + nECCBytesPerTx)/nBytesPerTx + 2)*framesPerTx +
                    (nMarkerFrames)) {
@@ -337,9 +357,9 @@ void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
             int fId = frameId - ((nMarkerFrames + nPostMarkerFrames) + ((sendDataLength + nECCBytesPerTx)/nBytesPerTx + 2)*framesPerTx);
             for (int i = 0; i < nBitsInMarker; ++i) {
                 if (i%2 == 0) {
-                    ::addAmplitudeSmooth(bit0Amplitude[i], outputBlock, sendVolume, 0, samplesPerFrameOut, fId, nMarkerFrames);
+                    addAmplitudeSmooth(bit0Amplitude[i], outputBlock, sendVolume, 0, samplesPerFrameOut, fId, nMarkerFrames);
                 } else {
-                    ::addAmplitudeSmooth(bit1Amplitude[i], outputBlock, sendVolume, 0, samplesPerFrameOut, fId, nMarkerFrames);
+                    addAmplitudeSmooth(bit1Amplitude[i], outputBlock, sendVolume, 0, samplesPerFrameOut, fId, nMarkerFrames);
                 }
             }
         } else {
@@ -363,15 +383,8 @@ void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
     cbQueueAudio(outputBlock16.data(), frameId*samplesPerFrameOut*sampleSizeBytesOut);
 }
 
-void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
-    static int nCalls = 0;
-    static float tSum_ms = 0.0f;
+void WaveShare::receive(const CBDequeueAudio & CBDequeueAudio) {
     auto tCallStart = std::chrono::high_resolution_clock::now();
-
-    if (needUpdate) {
-        init(0, "");
-        needUpdate = false;
-    }
 
     while (hasData == false) {
         // read capture data
@@ -383,18 +396,18 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
             {
                 sampleAmplitudeHistory[historyId] = sampleAmplitude;
 
-                if (++historyId >= ::kMaxSpectrumHistory) {
+                if (++historyId >= kMaxSpectrumHistory) {
                     historyId = 0;
                 }
 
-                if (historyId == 0 && (receivingData == false || (receivingData && txMode == ::TxMode::VariableLength))) {
+                if (historyId == 0 && (receivingData == false || (receivingData && txMode == TxMode::VariableLength))) {
                     std::fill(sampleAmplitudeAverage.begin(), sampleAmplitudeAverage.end(), 0.0f);
                     for (auto & s : sampleAmplitudeHistory) {
                         for (int i = 0; i < samplesPerFrame; ++i) {
                             sampleAmplitudeAverage[i] += s[i];
                         }
                     }
-                    float norm = 1.0f/::kMaxSpectrumHistory;
+                    float norm = 1.0f/kMaxSpectrumHistory;
                     for (int i = 0; i < samplesPerFrame; ++i) {
                         sampleAmplitudeAverage[i] *= norm;
                     }
@@ -445,8 +458,8 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
                 bool isValid = false;
                 for (int ii = nMarkerFrames*stepsPerFrame - 1; ii >= nMarkerFrames*stepsPerFrame/2; --ii) {
                     offsetStart = ii;
-                    bool knownLength = txMode == ::TxMode::FixedLength;
-                    int encodedOffset = (txMode == ::TxMode::FixedLength) ? 0 : 3;
+                    bool knownLength = txMode == TxMode::FixedLength;
+                    int encodedOffset = (txMode == TxMode::FixedLength) ? 0 : 3;
 
                     for (int itx = 0; itx < 1024; ++itx) {
                         int offsetTx = offsetStart + itx*framesPerTx*stepsPerFrame;
@@ -484,7 +497,7 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
                                 } else {
                                 }
                                 if (k == 7) {
-                                    encodedData[itx*nBytesPerTx + i/8] = curByte;
+                                    txDataEncoded[itx*nBytesPerTx + i/8] = curByte;
                                     curByte = 0;
                                 }
                             }
@@ -503,7 +516,7 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
 
                                 if (i%2) {
                                     curByte += (kmax << 4);
-                                    encodedData[itx*nBytesPerTx + i/2] = curByte;
+                                    txDataEncoded[itx*nBytesPerTx + i/2] = curByte;
                                     curByte = 0;
                                 } else {
                                     curByte = kmax;
@@ -511,9 +524,9 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
                             }
                         }
 
-                        if (txMode == ::TxMode::VariableLength) {
+                        if (txMode == TxMode::VariableLength) {
                             if (itx*nBytesPerTx > 3 && knownLength == false) {
-                                if ((rsLength->Decode(encodedData.data(), rxData.data()) == 0) && (rxData[0] <= 140)) {
+                                if ((rsLength->Decode(txDataEncoded.data(), rxData.data()) == 0) && (rxData[0] <= 140)) {
                                     knownLength = true;
                                 } else {
                                     break;
@@ -522,18 +535,18 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
                         }
                     }
 
-                    if (txMode == ::TxMode::VariableLength && knownLength) {
+                    if (txMode == TxMode::VariableLength && knownLength) {
                         if (rsData) delete rsData;
                         rsData = new RS::ReedSolomon(rxData[0], ::getECCBytesForLength(rxData[0]));
                     }
 
                     if (knownLength) {
                         int decodedLength = rxData[0];
-                        if (rsData->Decode(encodedData.data() + encodedOffset, rxData.data()) == 0) {
+                        if (rsData->Decode(txDataEncoded.data() + encodedOffset, rxData.data()) == 0) {
                             printf("Decoded length = %d\n", decodedLength);
-                            if (txMode == ::TxMode::FixedLength && rxData[0] == 'A') {
+                            if (txMode == TxMode::FixedLength && rxData[0] == 'A') {
                                 printf("[ANSWER] Received sound data successfully!\n");
-                            } else if (txMode == ::TxMode::FixedLength && rxData[0] == 'O') {
+                            } else if (txMode == TxMode::FixedLength && rxData[0] == 'O') {
                                 printf("[OFFER]  Received sound data successfully!\n");
                             } else {
                                 std::string s((char *) rxData.data(), decodedLength);
@@ -583,15 +596,15 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
                     printf("%sReceiving sound data ...\n", std::asctime(std::localtime(&timestamp)));
                     rxData.fill(0);
                     receivingData = true;
-                    if (txMode == ::TxMode::FixedLength) {
-                        recvDuration_frames = nMarkerFrames + nPostMarkerFrames + framesPerTx*((::kDefaultFixedLength + paramECCBytesPerTx)/paramBytesPerTx + 1);
+                    if (txMode == TxMode::FixedLength) {
+                        recvDuration_frames = nMarkerFrames + nPostMarkerFrames + framesPerTx*((kDefaultFixedLength + paramECCBytesPerTx)/paramBytesPerTx + 1);
                     } else {
-                        recvDuration_frames = nMarkerFrames + nPostMarkerFrames + framesPerTx*((::kMaxLength + ::getECCBytesForLength(::kMaxLength))/paramBytesPerTx + 1);
+                        recvDuration_frames = nMarkerFrames + nPostMarkerFrames + framesPerTx*((kMaxLength + ::getECCBytesForLength(kMaxLength))/paramBytesPerTx + 1);
                     }
                     framesToRecord = recvDuration_frames;
                     framesLeftToRecord = recvDuration_frames;
                 }
-            } else if (txMode == ::TxMode::VariableLength) {
+            } else if (txMode == TxMode::VariableLength) {
                 bool isEnded = true;
 
                 for (int i = 0; i < nBitsInMarker; ++i) {

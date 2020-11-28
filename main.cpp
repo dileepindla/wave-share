@@ -40,11 +40,10 @@ static int g_playbackId = -1;
 
 static bool g_isInitialized = false;
 
-static SDL_AudioDeviceID devid_in = 0;
-static SDL_AudioDeviceID devid_out = 0;
+static SDL_AudioDeviceID g_devIdIn = 0;
+static SDL_AudioDeviceID g_devIdOut = 0;
 
-struct DataRxTx;
-static DataRxTx *g_data = nullptr;
+static WaveShare *g_data = nullptr;
 
 namespace {
 
@@ -104,17 +103,17 @@ int init() {
 
     if (g_playbackId >= 0) {
         printf("Attempt to open playback device %d : '%s' ...\n", g_playbackId, SDL_GetAudioDeviceName(g_playbackId, SDL_FALSE));
-        devid_out = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_playbackId, SDL_FALSE), SDL_FALSE, &playbackSpec, &obtainedSpecOut, 0);
+        g_devIdOut = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_playbackId, SDL_FALSE), SDL_FALSE, &playbackSpec, &obtainedSpecOut, 0);
     } else {
         printf("Attempt to open default playback device ...\n");
-        devid_out = SDL_OpenAudioDevice(NULL, SDL_FALSE, &playbackSpec, &obtainedSpecOut, 0);
+        g_devIdOut = SDL_OpenAudioDevice(NULL, SDL_FALSE, &playbackSpec, &obtainedSpecOut, 0);
     }
 
-    if (!devid_out) {
+    if (!g_devIdOut) {
         printf("Couldn't open an audio device for playback: %s!\n", SDL_GetError());
-        devid_out = 0;
+        g_devIdOut = 0;
     } else {
-        printf("Obtained spec for output device (SDL Id = %d):\n", devid_out);
+        printf("Obtained spec for output device (SDL Id = %d):\n", g_devIdOut);
         printf("    - Sample rate:       %d (required: %d)\n", obtainedSpecOut.freq, playbackSpec.freq);
         printf("    - Format:            %d (required: %d)\n", obtainedSpecOut.format, playbackSpec.format);
         printf("    - Channels:          %d (required: %d)\n", obtainedSpecOut.channels, playbackSpec.channels);
@@ -151,16 +150,16 @@ int init() {
 
     if (g_captureId >= 0) {
         printf("Attempt to open capture device %d : '%s' ...\n", g_captureId, SDL_GetAudioDeviceName(g_captureId, SDL_FALSE));
-        devid_in = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_captureId, SDL_TRUE), SDL_TRUE, &captureSpec, &obtainedSpecIn, 0);
+        g_devIdIn = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_captureId, SDL_TRUE), SDL_TRUE, &captureSpec, &obtainedSpecIn, 0);
     } else {
         printf("Attempt to open default capture device ...\n");
-        devid_in = SDL_OpenAudioDevice(g_captureDeviceName, SDL_TRUE, &captureSpec, &obtainedSpecIn, 0);
+        g_devIdIn = SDL_OpenAudioDevice(g_captureDeviceName, SDL_TRUE, &captureSpec, &obtainedSpecIn, 0);
     }
-    if (!devid_in) {
+    if (!g_devIdIn) {
         printf("Couldn't open an audio device for capture: %s!\n", SDL_GetError());
-        devid_in = 0;
+        g_devIdIn = 0;
     } else {
-        printf("Obtained spec for input device (SDL Id = %d):\n", devid_in);
+        printf("Obtained spec for input device (SDL Id = %d):\n", g_devIdIn);
         printf("    - Sample rate:       %d\n", obtainedSpecIn.freq);
         printf("    - Format:            %d (required: %d)\n", obtainedSpecIn.format, captureSpec.format);
         printf("    - Channels:          %d (required: %d)\n", obtainedSpecIn.channels, captureSpec.channels);
@@ -182,7 +181,7 @@ int init() {
             break;
     }
 
-    g_data = new DataRxTx(
+    g_data = new WaveShare(
             obtainedSpecIn.freq,
             obtainedSpecOut.freq,
             1024,
@@ -201,21 +200,21 @@ extern "C" {
     }
 
     int getText(char * text) {
-        std::copy(g_data->rxData.begin(), g_data->rxData.end(), text);
+        std::copy(g_data->getRxData().begin(), g_data->getRxData().end(), text);
         return 0;
     }
 
-    int getSampleRate() { return g_data->sampleRateIn; }
-    float getAverageRxTime_ms() { return g_data->averageRxTime_ms; }
-    int getFramesToRecord() { return g_data->framesToRecord; }
-    int getFramesLeftToRecord() { return g_data->framesLeftToRecord; }
-    int getFramesToAnalyze() { return g_data->framesToAnalyze; }
-    int getFramesLeftToAnalyze() { return g_data->framesLeftToAnalyze; }
-    int hasDeviceOutput() { return devid_out; }
-    int hasDeviceCapture() { return (g_data->totalBytesCaptured > 0) ? devid_in : 0; }
-    int doInit() { return init(); }
+    int getSampleRate()             { return g_data->getSampleRateIn(); }
+    float getAverageRxTime_ms()     { return g_data->getAverageRxTime_ms(); }
+    int getFramesToRecord()         { return g_data->getFramesToRecord(); }
+    int getFramesLeftToRecord()     { return g_data->getFramesLeftToRecord(); }
+    int getFramesToAnalyze()        { return g_data->getFramesToAnalyze(); }
+    int getFramesLeftToAnalyze()    { return g_data->getFramesLeftToAnalyze(); }
+    int hasDeviceOutput()           { return g_devIdOut; }
+    int hasDeviceCapture()          { return (g_data->getTotalBytesCaptured() > 0) ? g_devIdIn : 0; }
+    int doInit()                    { return init(); }
     int setTxMode(int txMode) {
-        g_data->txMode = (::TxMode)(txMode);
+        g_data->setTxMode((WaveShare::TxMode)(txMode));
         g_data->init(0, "");
         return 0;
     }
@@ -229,13 +228,14 @@ extern "C" {
         int paramVolume) {
         if (g_data == nullptr) return;
 
-        g_data->paramFreqDelta = paramFreqDelta;
-        g_data->paramFreqStart = paramFreqStart;
-        g_data->paramFramesPerTx = paramFramesPerTx;
-        g_data->paramBytesPerTx = paramBytesPerTx;
-        g_data->paramVolume = paramVolume;
+        g_data->setParameters(
+                paramFreqDelta,
+                paramFreqStart,
+                paramFramesPerTx,
+                paramBytesPerTx,
+                paramVolume);
 
-        g_data->needUpdate = true;
+        g_data->init(0, "");
     }
 }
 
@@ -251,47 +251,47 @@ void update() {
         }
     }
 
-    static DataRxTx::CBQueueAudio cbQueueAudio = [&](const void * data, uint32_t nBytes) {
-        SDL_QueueAudio(devid_out, data, nBytes);
+    static WaveShare::CBQueueAudio cbQueueAudio = [&](const void * data, uint32_t nBytes) {
+        SDL_QueueAudio(g_devIdOut, data, nBytes);
     };
 
-    static DataRxTx::CBDequeueAudio CBDequeueAudio = [&](void * data, uint32_t nMaxBytes) {
-        return SDL_DequeueAudio(devid_in, data, nMaxBytes);
+    static WaveShare::CBDequeueAudio CBDequeueAudio = [&](void * data, uint32_t nMaxBytes) {
+        return SDL_DequeueAudio(g_devIdIn, data, nMaxBytes);
     };
 
-    if (g_data->hasData == false) {
-        SDL_PauseAudioDevice(devid_out, SDL_FALSE);
+    if (g_data->getHasData() == false) {
+        SDL_PauseAudioDevice(g_devIdOut, SDL_FALSE);
 
         static auto tLastNoData = std::chrono::high_resolution_clock::now();
         auto tNow = std::chrono::high_resolution_clock::now();
 
-        if ((int) SDL_GetQueuedAudioSize(devid_out) < g_data->samplesPerFrame*g_data->sampleSizeBytesOut) {
-            SDL_PauseAudioDevice(devid_in, SDL_FALSE);
+        if ((int) SDL_GetQueuedAudioSize(g_devIdOut) < g_data->getSamplesPerFrame()*g_data->getSampleSizeBytesOut()) {
+            SDL_PauseAudioDevice(g_devIdIn, SDL_FALSE);
             if (::getTime_ms(tLastNoData, tNow) > 500.0f) {
                 g_data->receive(CBDequeueAudio);
-                if ((int) SDL_GetQueuedAudioSize(devid_in) > 32*g_data->samplesPerFrame*g_data->sampleSizeBytesIn) {
-                    SDL_ClearQueuedAudio(devid_in);
+                if ((int) SDL_GetQueuedAudioSize(g_devIdIn) > 32*g_data->getSamplesPerFrame()*g_data->getSampleSizeBytesIn()) {
+                    SDL_ClearQueuedAudio(g_devIdIn);
                 }
             } else {
-                SDL_ClearQueuedAudio(devid_in);
+                SDL_ClearQueuedAudio(g_devIdIn);
             }
         } else {
             tLastNoData = tNow;
-            //SDL_ClearQueuedAudio(devid_in);
+            //SDL_ClearQueuedAudio(g_devIdIn);
             //SDL_Delay(10);
         }
     } else {
-        SDL_PauseAudioDevice(devid_out, SDL_TRUE);
-        SDL_PauseAudioDevice(devid_in, SDL_TRUE);
+        SDL_PauseAudioDevice(g_devIdOut, SDL_TRUE);
+        SDL_PauseAudioDevice(g_devIdIn, SDL_TRUE);
 
         g_data->send(cbQueueAudio);
     }
 
     if (shouldTerminate) {
-        SDL_PauseAudioDevice(devid_in, 1);
-        SDL_CloseAudioDevice(devid_in);
-        SDL_PauseAudioDevice(devid_out, 1);
-        SDL_CloseAudioDevice(devid_out);
+        SDL_PauseAudioDevice(g_devIdIn, 1);
+        SDL_CloseAudioDevice(g_devIdIn);
+        SDL_PauseAudioDevice(g_devIdOut, 1);
+        SDL_CloseAudioDevice(g_devIdOut);
         SDL_CloseAudio();
         SDL_Quit();
         #ifdef __EMSCRIPTEN__
@@ -349,31 +349,31 @@ int main(int argc, char** argv) {
         case 0:
             {
                 printf("Using 'Normal' Tx Protocol\n");
-                setParameters(1, 40, 9, 3, 0, 50);
+                g_data->setParameters(1, 40, 9, 3, 50);
             }
             break;
         case 1:
             {
                 printf("Using 'Fast' Tx Protocol\n");
-                setParameters(1, 40, 6, 3, 0, 50);
+                g_data->setParameters(1, 40, 6, 3, 50);
             }
             break;
         case 2:
             {
                 printf("Using 'Fastest' Tx Protocol\n");
-                setParameters(1, 40, 3, 3, 0, 50);
+                g_data->setParameters(1, 40, 3, 3, 50);
             }
             break;
         case 3:
             {
                 printf("Using 'Ultrasonic' Tx Protocol\n");
-                setParameters(1, 320, 9, 3, 0, 50);
+                g_data->setParameters(1, 320, 9, 3, 50);
             }
             break;
         default:
             {
                 printf("Using 'Fast' Tx Protocol\n");
-                setParameters(1, 40, 6, 3, 0, 50);
+                g_data->setParameters(1, 40, 6, 3, 50);
             }
     };
     printf("\n");
@@ -412,10 +412,10 @@ int main(int argc, char** argv) {
 
     delete g_data;
 
-    SDL_PauseAudioDevice(devid_in, 1);
-    SDL_CloseAudioDevice(devid_in);
-    SDL_PauseAudioDevice(devid_out, 1);
-    SDL_CloseAudioDevice(devid_out);
+    SDL_PauseAudioDevice(g_devIdIn, 1);
+    SDL_CloseAudioDevice(g_devIdIn);
+    SDL_PauseAudioDevice(g_devIdOut, 1);
+    SDL_CloseAudioDevice(g_devIdOut);
     SDL_CloseAudio();
     SDL_Quit();
 
