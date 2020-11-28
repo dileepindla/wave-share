@@ -16,6 +16,8 @@
 #define assert(dummy)
 #endif
 
+#include <vector>
+
 namespace RS {
 
 #define MSG_CNT 3   // message-length polynomials count
@@ -72,9 +74,13 @@ public:
      void EncodeBlock(const void* src, void* dst) {
         assert(msg_length + ecc_length < 256);
 
-        /* Allocating memory on stack for polynomials storage */
-        uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
-        this->memory = stack_memory;
+        ///* Allocating memory on stack for polynomials storage */
+        //uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
+        //this->memory = stack_memory;
+
+        // gg : allocation is now on the heap
+        std::vector<uint8_t> stack_memory(MSG_CNT * msg_length + POLY_CNT * ecc_length * 2);
+        this->memory = stack_memory.data();
 
         const uint8_t* src_ptr = (const uint8_t*) src;
         uint8_t* dst_ptr = (uint8_t*) dst;
@@ -148,9 +154,13 @@ public:
 
         bool ok;
 
-        /* Allocation memory on stack */
-        uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
-        this->memory = stack_memory;
+        ///* Allocation memory on stack  */
+        //uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
+        //this->memory = stack_memory;
+
+        // gg : allocation is now on the heap
+        std::vector<uint8_t> stack_memory(MSG_CNT * msg_length + POLY_CNT * ecc_length * 2);
+        this->memory = stack_memory.data();
 
         Poly *msg_in  = &polynoms[ID_MSG_IN];
         Poly *msg_out = &polynoms[ID_MSG_OUT];

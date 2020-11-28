@@ -10,14 +10,13 @@ enum TxMode {
     VariableLength,
 };
 
-constexpr double    kBaseSampleRate = 48000.0;
-constexpr auto      kMaxSamplesPerFrame = 1024;
-constexpr auto      kMaxDataBits = 256;
-constexpr auto      kMaxDataSize = 256;
-constexpr auto      kMaxLength = 140;
-constexpr auto      kMaxSpectrumHistory = 4;
-constexpr auto      kMaxRecordedFrames = 64*10;
-constexpr auto      kDefaultFixedLength = 82;
+constexpr auto kMaxSamplesPerFrame = 1024;
+constexpr auto kMaxDataBits = 256;
+constexpr auto kMaxDataSize = 256;
+constexpr auto kMaxLength = 140;
+constexpr auto kMaxSpectrumHistory = 4;
+constexpr auto kMaxRecordedFrames = 64*10;
+constexpr auto kDefaultFixedLength = 82;
 
 using AmplitudeData   = std::array<float, kMaxSamplesPerFrame>;
 using AmplitudeData16 = std::array<int16_t, kMaxRecordedFrames*kMaxSamplesPerFrame>;

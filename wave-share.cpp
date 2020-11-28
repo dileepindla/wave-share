@@ -18,10 +18,6 @@ int log2(int N) {
     return i - 1;
 }
 
-int check(int n) {
-    return n > 0 && (n & (n - 1)) == 0;
-}
-
 int reverse(int N, int n) {
     int j, p = 0;
     for(j = 1; j <= log2(N); j++) {

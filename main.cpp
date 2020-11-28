@@ -9,7 +9,6 @@
 #include <SDL2/SDL_audio.h>
 
 #include <cstdio>
-#include <array>
 #include <string>
 #include <chrono>
 #include <ctime>
@@ -32,7 +31,10 @@
 #undef main
 #endif
 
+constexpr double kBaseSampleRate = 48000.0;
+
 static char *g_captureDeviceName = nullptr;
+
 static int g_captureId = -1;
 static int g_playbackId = -1;
 
