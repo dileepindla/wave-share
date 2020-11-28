@@ -83,6 +83,6 @@ if (WAVESHARE_ALL_WARNINGS)
     endif()
 endif()
 
-add_executable(wave-share main.cpp)
+add_executable(wave-share main.cpp wave-share.cpp)
 target_include_directories(wave-share PUBLIC ${SDL2_INCLUDE_DIRS})
 target_link_libraries(wave-share PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${SDL2_LIBRARIES})
