@@ -33,6 +33,9 @@ if (WAVESHARE_SUPPORT_SDL2)
         string(STRIP "${SDL2_LIBRARIES}" SDL2_LIBRARIES)
     endif()
 
+    message(STATUS "SDL2_INCLUDE_DIRS = ${SDL2_INCLUDE_DIRS}")
+    message(STATUS "SDL2_LIBRARIES = ${SDL2_LIBRARIES}")
+
     # wave-share-common-sdl2
 
     target_include_directories(wave-share-common-sdl2 PUBLIC

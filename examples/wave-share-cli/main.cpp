@@ -8,8 +8,8 @@
 #include "wave-share-common.h"
 #include "wave-share-common-sdl2.h"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_audio.h>
+#include <SDL.h>
+#include <SDL_audio.h>
 
 #include <cstdio>
 #include <string>
