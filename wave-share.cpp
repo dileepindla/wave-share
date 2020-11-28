@@ -193,6 +193,7 @@ void DataRxTx::init(int textLength, const char * stext) {
 
     if (txMode == ::TxMode::FixedLength) {
         rsData = new RS::ReedSolomon(kDefaultFixedLength, nECCBytesPerTx);
+        rsLength = nullptr;
     } else {
         rsData = new RS::ReedSolomon(textLength, nECCBytesPerTx);
         rsLength = new RS::ReedSolomon(1, 2);

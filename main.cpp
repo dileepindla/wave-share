@@ -212,7 +212,11 @@ extern "C" {
     int hasDeviceOutput() { return devid_out; }
     int hasDeviceCapture() { return (g_data->totalBytesCaptured > 0) ? devid_in : 0; }
     int doInit() { return init(); }
-    int setTxMode(int txMode) { g_data->txMode = (::TxMode)(txMode); return 0; }
+    int setTxMode(int txMode) {
+        g_data->txMode = (::TxMode)(txMode);
+        g_data->init(0, "");
+        return 0;
+    }
 
     void setParameters(
         int paramFreqDelta,
