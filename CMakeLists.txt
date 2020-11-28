@@ -13,12 +13,10 @@ else()
 endif()
 
 if (EMSCRIPTEN)
-    set(WAVESHARE_SUPPORT_NCURSES_DEFAULT OFF)
-    set(WAVESHARE_SUPPORT_CURL_DEFAULT OFF)
+    set(WAVESHARE_SUPPORT_SDL2_DEFAULT ON)
     set(WAVESHARE_LIBRARY_TYPE STATIC)
 else()
-    set(WAVESHARE_SUPPORT_NCURSES_DEFAULT ON)
-    set(WAVESHARE_SUPPORT_CURL_DEFAULT ON)
+    set(WAVESHARE_SUPPORT_SDL2_DEFAULT ON)
     if (BUILD_SHARED_LIBS)
         set(WAVESHARE_LIBRARY_TYPE SHARED)
     else ()
@@ -36,6 +34,10 @@ option(WAVESHARE_ALL_WARNINGS_3RD_PARTY  "wave-share: enable all compiler warnin
 option(WAVESHARE_SANITIZE_THREAD         "wave-share: enable thread sanitizer" OFF)
 option(WAVESHARE_SANITIZE_ADDRESS        "wave-share: enable address sanitizer" OFF)
 option(WAVESHARE_SANITIZE_UNDEFINED      "wave-share: enable undefined sanitizer" OFF)
+
+option(WAVESHARE_SUPPORT_SDL2            "wave-share: support for libSDL2" ${WAVESHARE_SUPPORT_SDL2_DEFAULT})
+
+option(WAVESHARE_BUILD_EXAMPLES          "wave-share: build examples" ${WAVESHARE_STANDALONE})
 
 # sanitizers
 
@@ -56,20 +58,6 @@ endif()
 
 # dependencies
 
-find_package(Threads REQUIRED)
-find_package(SDL2)
-
-if (NOT USE_FINDSDL2 AND NOT SDL2_FOUND)
-    message(WARNING "Unable to find SDL2 library. It is either not installed or CMake cannot find it."
-        " In the latter case, setting the USE_FINDSDL2 variable might help:\n"
-        "   $ cmake -D USE_FINDSDL2 .."
-        )
-
-    message(FATAL_ERROR "Aborting")
-endif()
-
-string(STRIP "${SDL2_LIBRARIES}" SDL2_LIBRARIES)
-
 # main
 
 set(CMAKE_CXX_STANDARD 11)
@@ -83,6 +71,12 @@ if (WAVESHARE_ALL_WARNINGS)
     endif()
 endif()
 
-add_executable(wave-share main.cpp wave-share.cpp)
-target_include_directories(wave-share PUBLIC ${SDL2_INCLUDE_DIRS})
-target_link_libraries(wave-share PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${SDL2_LIBRARIES})
+add_subdirectory(src)
+
+if (WAVESHARE_STANDALONE AND WAVESHARE_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
+#add_executable(wave-share main.cpp wave-share.cpp)
+#target_include_directories(wave-share PUBLIC ${SDL2_INCLUDE_DIRS})
+#target_link_libraries(wave-share PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${SDL2_LIBRARIES})

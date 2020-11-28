@@ -1,4 +1,4 @@
-#include "wave-share.h"
+#include "wave-share/wave-share.h"
 
 #include "reed-solomon/rs.hpp"
 
