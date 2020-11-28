@@ -1,8 +1,8 @@
 #pragma once
 
-#include "wave-share/wave-share.h"
-
 #include <SDL2/SDL.h>
+
+class WaveShare;
 
 bool initSDL2ForWaveShare(
         bool & isInitialized,

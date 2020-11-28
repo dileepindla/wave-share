@@ -1,5 +1,7 @@
 #include "wave-share-common-sdl2.h"
 
+#include "wave-share/wave-share.h"
+
 constexpr double kBaseSampleRate = 48000.0;
 
 bool initSDL2ForWaveShare(

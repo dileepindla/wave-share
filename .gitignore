@@ -1,6 +1,4 @@
 build
-build_timestamp.h
-compile_*
-*.js
-*.wasm
+build-em
+compile_commands.json
 .clangd

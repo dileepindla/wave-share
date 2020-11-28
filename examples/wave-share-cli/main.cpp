@@ -5,6 +5,7 @@
 
 #include "wave-share/wave-share.h"
 
+#include "wave-share-common.h"
 #include "wave-share-common-sdl2.h"
 
 #include <SDL2/SDL.h>
@@ -13,25 +14,10 @@
 #include <cstdio>
 #include <string>
 #include <chrono>
-#include <ctime>
-#include <map>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846f
-#endif
-
-#ifdef __EMSCRIPTEN__
-#include "build_timestamp.h"
-#include "emscripten/emscripten.h"
-#else
 #include <mutex>
 #include <thread>
 #include <iostream>
-#endif
-
-#ifdef main
-#undef main
-#endif
 
 static char *g_defaultCaptureDeviceName = nullptr;
 
@@ -44,73 +30,6 @@ static SDL_AudioDeviceID g_devIdIn = 0;
 static SDL_AudioDeviceID g_devIdOut = 0;
 
 static WaveShare *g_waveShare = nullptr;
-
-namespace {
-
-template <class T>
-float getTime_ms(const T & tStart, const T & tEnd) {
-    return ((float)(std::chrono::duration_cast<std::chrono::microseconds>(tEnd - tStart).count()))/1000.0;
-}
-
-}
-
-// JS interface
-extern "C" {
-    int setText(int textLength, const char * text) {
-        g_waveShare->init(textLength, text);
-        return 0;
-    }
-
-    int getText(char * text) {
-        std::copy(g_waveShare->getRxData().begin(), g_waveShare->getRxData().end(), text);
-        return 0;
-    }
-
-    int getSampleRate()             { return g_waveShare->getSampleRateIn(); }
-    float getAverageRxTime_ms()     { return g_waveShare->getAverageRxTime_ms(); }
-    int getFramesToRecord()         { return g_waveShare->getFramesToRecord(); }
-    int getFramesLeftToRecord()     { return g_waveShare->getFramesLeftToRecord(); }
-    int getFramesToAnalyze()        { return g_waveShare->getFramesToAnalyze(); }
-    int getFramesLeftToAnalyze()    { return g_waveShare->getFramesLeftToAnalyze(); }
-    int hasDeviceOutput()           { return g_devIdOut; }
-    int hasDeviceCapture()          { return (g_waveShare->getTotalBytesCaptured() > 0) ? g_devIdIn : 0; }
-
-    int doInit()                    {
-        return initSDL2ForWaveShare(
-                g_isInitialized,
-                g_playbackId,
-                g_devIdIn,
-                g_captureId,
-                g_devIdOut,
-                g_waveShare,
-                g_defaultCaptureDeviceName);
-    }
-
-    int setTxMode(int txMode) {
-        g_waveShare->setTxMode((WaveShare::TxMode)(txMode));
-        g_waveShare->init(0, "");
-        return 0;
-    }
-
-    void setParameters(
-        int paramFreqDelta,
-        int paramFreqStart,
-        int paramFramesPerTx,
-        int paramBytesPerTx,
-        int /*paramECCBytesPerTx*/,
-        int paramVolume) {
-        if (g_waveShare == nullptr) return;
-
-        g_waveShare->setParameters(
-                paramFreqDelta,
-                paramFreqStart,
-                paramFramesPerTx,
-                paramBytesPerTx,
-                paramVolume);
-
-        g_waveShare->init(0, "");
-    }
-}
 
 // main loop
 void update() {
@@ -167,33 +86,10 @@ void update() {
         SDL_CloseAudioDevice(g_devIdOut);
         SDL_CloseAudio();
         SDL_Quit();
-        #ifdef __EMSCRIPTEN__
-        emscripten_cancel_main_loop();
-        #endif
     }
-}
-
-static std::map<std::string, std::string> parseCmdArguments(int argc, char ** argv) {
-    int last = argc;
-    std::map<std::string, std::string> res;
-    for (int i = 1; i < last; ++i) {
-        if (argv[i][0] == '-') {
-            if (strlen(argv[i]) > 1) {
-                res[std::string(1, argv[i][1])] = strlen(argv[i]) > 2 ? argv[i] + 2 : "";
-            }
-        }
-    }
-
-    return res;
 }
 
 int main(int argc, char** argv) {
-#ifdef __EMSCRIPTEN__
-    printf("Build time: %s\n", BUILD_TIMESTAMP);
-    printf("Press the Init button to start\n");
-
-    g_defaultCaptureDeviceName = argv[1];
-#else
     printf("Usage: %s [-cN] [-pN] [-tN]\n", argv[0]);
     printf("    -cN - select capture device N\n");
     printf("    -pN - select playback device N\n");
@@ -210,11 +106,7 @@ int main(int argc, char** argv) {
     g_captureId = argm["c"].empty() ? 0 : std::stoi(argm["c"]);
     g_playbackId = argm["p"].empty() ? 0 : std::stoi(argm["p"]);
     int txProtocol = argm["t"].empty() ? 1 : std::stoi(argm["t"]);
-#endif
 
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop(update, 60, 1);
-#else
     initSDL2ForWaveShare(
             g_isInitialized,
             g_playbackId,
@@ -222,7 +114,8 @@ int main(int argc, char** argv) {
             g_captureId,
             g_devIdOut,
             g_waveShare);
-    setTxMode(1);
+
+    g_waveShare->setTxMode(WaveShare::TxMode::VariableLength);
 
     printf("Selecting Tx protocol %d\n", txProtocol);
     switch (txProtocol) {
@@ -256,8 +149,9 @@ int main(int argc, char** argv) {
                 g_waveShare->setParameters(1, 40, 6, 3, 50);
             }
     };
-    g_waveShare->init(0, "");
     printf("\n");
+
+    g_waveShare->init(0, "");
 
     std::mutex mutex;
     std::thread inputThread([&mutex]() {
@@ -274,7 +168,7 @@ int main(int argc, char** argv) {
             }
             {
                 std::lock_guard<std::mutex> lock(mutex);
-                setText(input.size(), input.data());
+                g_waveShare->init(input.size(), input.data());
             }
             inputOld = input;
         }
@@ -289,7 +183,6 @@ int main(int argc, char** argv) {
     }
 
     inputThread.join();
-#endif
 
     delete g_waveShare;
 

@@ -67,11 +67,19 @@ For convenience, a [simple WebRTC hack](https://github.com/diafygi/webrtc-ips) i
 
 ## Build
 
-### Web Assembly module `wave.wasm`
+### Web Assembly module `wave-share-wasm`
 
-You will need an Emscripten compiler. Run the ``compile.sh`` script.
+You will need an Emscripten compiler.
 
-### CLI tool `wave-share`
+```bash
+git clone https://github.com/ggerganov/wave-share
+cd wave-share
+mkdir build && cd build
+emconfigure cmake ..
+make
+```
+
+### CLI tool `wave-share-cli`
 
 This is a simple tool that receives and sends data using the explained `wave-share` sound tx/rx protocol. Type some text on the standard input and press Enter to transmit.
 
@@ -83,7 +91,7 @@ cmake ..
 make
 
 # running
-./bin/wave-share
+./bin/wave-share-cli
 ```
 
 Here is a short video demonstrating how to use the CLI tool:
