@@ -26,6 +26,7 @@
 #include "build_timestamp.h"
 #include "emscripten/emscripten.h"
 #else
+#include <mutex>
 #include <thread>
 #include <iostream>
 #endif
@@ -1053,7 +1054,9 @@ int main(int argc, char** argv) {
             }
     };
     printf("\n");
-    std::thread inputThread([]() {
+
+    std::mutex mutex;
+    std::thread inputThread([&mutex]() {
         std::string inputOld = "";
         while (true) {
             std::string input;
@@ -1065,14 +1068,20 @@ int main(int argc, char** argv) {
             } else {
                 std::cout << "Sending ... " << std::endl;
             }
-            setText(input.size(), input.data());
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                setText(input.size(), input.data());
+            }
             inputOld = input;
         }
     });
 
     while (true) {
         SDL_Delay(1);
-        update();
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            update();
+        }
     }
 
     inputThread.join();

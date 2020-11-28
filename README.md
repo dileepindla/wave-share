@@ -23,9 +23,9 @@ In this project the signaling is performed via sound. The signaling sequence loo
   - Peer B, who wants to establish connection with peer A, responds with an audio answer. The answer has peer B's contact information encoded in it. Additionally, peer B starts trying to connect to peer A
   - Peer A receives the answer from peer B, decodes the transmitted contact data and allows peer B to connect
   - Connection is established
-  
+
 <p align="center"><img src="media/wave-share-scheme2.png"></p>
-  
+
 The described signaling sequence does not involve a signaling server. Therefore, an application using signaling through sound can be, for example, served by a static web page. The only requirement is to have control over the audio output/capture devices.
 
 An obvious limitation (feature) of the current approach is that only nearby devices (e.g. within the same room) can establish connection with each other. Moreover, the devices have to be connected in the same local network, because NAT is not available.
@@ -83,7 +83,7 @@ cmake ..
 make
 
 # running
-./wave-share
+./bin/wave-share
 ```
 
 Here is a short video demonstrating how to use the CLI tool:
