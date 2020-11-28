@@ -82,24 +82,30 @@ int init() {
         }
     }
 
-    SDL_AudioSpec desiredSpec;
-    SDL_zero(desiredSpec);
+    SDL_AudioSpec playbackSpec;
+    SDL_zero(playbackSpec);
 
-    desiredSpec.freq = ::kBaseSampleRate;
-    desiredSpec.format = AUDIO_S16SYS;
-    desiredSpec.channels = 1;
-    desiredSpec.samples = 16*1024;
-    desiredSpec.callback = NULL;
+    playbackSpec.freq = ::kBaseSampleRate;
+    playbackSpec.format = AUDIO_S16SYS;
+    playbackSpec.channels = 1;
+    playbackSpec.samples = 16*1024;
+    playbackSpec.callback = NULL;
 
-    SDL_AudioSpec obtainedSpec;
-    SDL_zero(obtainedSpec);
+    SDL_AudioSpec obtainedSpecIn;
+    SDL_AudioSpec obtainedSpecOut;
+
+    int sampleSizeBytesIn = 4;
+    int sampleSizeBytesOut = 2;
+
+    SDL_zero(obtainedSpecIn);
+    SDL_zero(obtainedSpecOut);
 
     if (g_playbackId >= 0) {
         printf("Attempt to open playback device %d : '%s' ...\n", g_playbackId, SDL_GetAudioDeviceName(g_playbackId, SDL_FALSE));
-        devid_out = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_playbackId, SDL_FALSE), SDL_FALSE, &desiredSpec, &obtainedSpec, 0);
+        devid_out = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_playbackId, SDL_FALSE), SDL_FALSE, &playbackSpec, &obtainedSpecOut, 0);
     } else {
         printf("Attempt to open default playback device ...\n");
-        devid_out = SDL_OpenAudioDevice(NULL, SDL_FALSE, &desiredSpec, &obtainedSpec, 0);
+        devid_out = SDL_OpenAudioDevice(NULL, SDL_FALSE, &playbackSpec, &obtainedSpecOut, 0);
     }
 
     if (!devid_out) {
@@ -107,61 +113,79 @@ int init() {
         devid_out = 0;
     } else {
         printf("Obtained spec for output device (SDL Id = %d):\n", devid_out);
-        printf("    - Sample rate:       %d (required: %d)\n", obtainedSpec.freq, desiredSpec.freq);
-        printf("    - Format:            %d (required: %d)\n", obtainedSpec.format, desiredSpec.format);
-        printf("    - Channels:          %d (required: %d)\n", obtainedSpec.channels, desiredSpec.channels);
-        printf("    - Samples per frame: %d (required: %d)\n", obtainedSpec.samples, desiredSpec.samples);
+        printf("    - Sample rate:       %d (required: %d)\n", obtainedSpecOut.freq, playbackSpec.freq);
+        printf("    - Format:            %d (required: %d)\n", obtainedSpecOut.format, playbackSpec.format);
+        printf("    - Channels:          %d (required: %d)\n", obtainedSpecOut.channels, playbackSpec.channels);
+        printf("    - Samples per frame: %d (required: %d)\n", obtainedSpecOut.samples, playbackSpec.samples);
 
-        if (obtainedSpec.format != desiredSpec.format ||
-            obtainedSpec.channels != desiredSpec.channels ||
-            obtainedSpec.samples != desiredSpec.samples) {
+        if (obtainedSpecOut.format != playbackSpec.format ||
+            obtainedSpecOut.channels != playbackSpec.channels ||
+            obtainedSpecOut.samples != playbackSpec.samples) {
             SDL_CloseAudio();
-            throw std::runtime_error("Failed to initialize desired SDL_OpenAudio!");
+            throw std::runtime_error("Failed to initialize playback SDL_OpenAudio!");
         }
     }
 
+    switch (obtainedSpecOut.format) {
+        case AUDIO_U8:
+        case AUDIO_S8:
+            sampleSizeBytesOut = 1;
+            break;
+        case AUDIO_U16SYS:
+        case AUDIO_S16SYS:
+            sampleSizeBytesOut = 2;
+            break;
+        case AUDIO_S32SYS:
+        case AUDIO_F32SYS:
+            sampleSizeBytesOut = 4;
+            break;
+    }
+
     SDL_AudioSpec captureSpec;
-    captureSpec = obtainedSpec;
+    captureSpec = obtainedSpecOut;
     captureSpec.freq = ::kBaseSampleRate;
     captureSpec.format = AUDIO_F32SYS;
-    captureSpec.samples = 1024;
+    captureSpec.samples = 4096;
 
-    if (g_playbackId >= 0) {
+    if (g_captureId >= 0) {
         printf("Attempt to open capture device %d : '%s' ...\n", g_captureId, SDL_GetAudioDeviceName(g_captureId, SDL_FALSE));
-        devid_in = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_captureId, SDL_TRUE), SDL_TRUE, &captureSpec, &captureSpec, 0);
+        devid_in = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(g_captureId, SDL_TRUE), SDL_TRUE, &captureSpec, &obtainedSpecIn, 0);
     } else {
         printf("Attempt to open default capture device ...\n");
-        devid_in = SDL_OpenAudioDevice(g_captureDeviceName, SDL_TRUE, &captureSpec, &captureSpec, 0);
+        devid_in = SDL_OpenAudioDevice(g_captureDeviceName, SDL_TRUE, &captureSpec, &obtainedSpecIn, 0);
     }
     if (!devid_in) {
         printf("Couldn't open an audio device for capture: %s!\n", SDL_GetError());
         devid_in = 0;
     } else {
-
         printf("Obtained spec for input device (SDL Id = %d):\n", devid_in);
-        printf("    - Sample rate:       %d\n", captureSpec.freq);
-        printf("    - Format:            %d (required: %d)\n", captureSpec.format, desiredSpec.format);
-        printf("    - Channels:          %d (required: %d)\n", captureSpec.channels, desiredSpec.channels);
-        printf("    - Samples per frame: %d\n", captureSpec.samples);
+        printf("    - Sample rate:       %d\n", obtainedSpecIn.freq);
+        printf("    - Format:            %d (required: %d)\n", obtainedSpecIn.format, captureSpec.format);
+        printf("    - Channels:          %d (required: %d)\n", obtainedSpecIn.channels, captureSpec.channels);
+        printf("    - Samples per frame: %d\n", obtainedSpecIn.samples);
     }
 
-    int sampleSizeBytes = 4;
-    //switch (obtainedSpec.format) {
-    //    case AUDIO_U8:
-    //    case AUDIO_S8:
-    //        sampleSizeBytes = 1;
-    //        break;
-    //    case AUDIO_U16SYS:
-    //    case AUDIO_S16SYS:
-    //        sampleSizeBytes = 2;
-    //        break;
-    //    case AUDIO_S32SYS:
-    //    case AUDIO_F32SYS:
-    //        sampleSizeBytes = 4;
-    //        break;
-    //}
+    switch (obtainedSpecIn.format) {
+        case AUDIO_U8:
+        case AUDIO_S8:
+            sampleSizeBytesIn = 1;
+            break;
+        case AUDIO_U16SYS:
+        case AUDIO_S16SYS:
+            sampleSizeBytesIn = 2;
+            break;
+        case AUDIO_S32SYS:
+        case AUDIO_F32SYS:
+            sampleSizeBytesIn = 4;
+            break;
+    }
 
-    g_data = new DataRxTx(obtainedSpec.freq, ::kBaseSampleRate, captureSpec.samples, sampleSizeBytes, "");
+    g_data = new DataRxTx(
+            obtainedSpecIn.freq,
+            obtainedSpecOut.freq,
+            1024,
+            sampleSizeBytesIn,
+            sampleSizeBytesOut);
 
     g_isInitialized = true;
     return 0;
@@ -179,7 +203,7 @@ extern "C" {
         return 0;
     }
 
-    int getSampleRate() { return g_data->sampleRate; }
+    int getSampleRate() { return g_data->sampleRateIn; }
     float getAverageRxTime_ms() { return g_data->averageRxTime_ms; }
     int getFramesToRecord() { return g_data->framesToRecord; }
     int getFramesLeftToRecord() { return g_data->framesLeftToRecord; }
@@ -235,11 +259,11 @@ void update() {
         static auto tLastNoData = std::chrono::high_resolution_clock::now();
         auto tNow = std::chrono::high_resolution_clock::now();
 
-        if ((int) SDL_GetQueuedAudioSize(devid_out) < g_data->samplesPerFrame*g_data->sampleSizeBytes) {
+        if ((int) SDL_GetQueuedAudioSize(devid_out) < g_data->samplesPerFrame*g_data->sampleSizeBytesOut) {
             SDL_PauseAudioDevice(devid_in, SDL_FALSE);
             if (::getTime_ms(tLastNoData, tNow) > 500.0f) {
                 g_data->receive(CBDequeueAudio);
-                if ((int) SDL_GetQueuedAudioSize(devid_in) > 32*g_data->sampleSizeBytes*g_data->samplesPerFrame) {
+                if ((int) SDL_GetQueuedAudioSize(devid_in) > 32*g_data->samplesPerFrame*g_data->sampleSizeBytesIn) {
                     SDL_ClearQueuedAudio(devid_in);
                 }
             } else {

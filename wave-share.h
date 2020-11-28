@@ -32,7 +32,12 @@ struct DataRxTx {
     using CBQueueAudio = std::function<void(const void * data, uint32_t nBytes)>;
     using CBDequeueAudio = std::function<uint32_t(void * data, uint32_t nMaxBytes)>;
 
-    DataRxTx(int aSampleRateOut, int aSampleRate, int aSamplesPerFrame, int aSampleSizeB, const char * text);
+    DataRxTx(
+            int aSampleRateIn,
+            int aSampleRateOut,
+            int aSamplesPerFrame,
+            int aSampleSizeBytesIn,
+            int aSampleSizeBytesOut);
 
     void init(int textLength, const char * stext);
 
@@ -81,7 +86,7 @@ struct DataRxTx {
     float hzPerFrame;
     float ihzPerFrame;
     float isamplesPerFrame;
-    float sampleRate;
+    float sampleRateIn;
     float sampleRateOut;
     float sendVolume;
 
@@ -102,7 +107,8 @@ struct DataRxTx {
     int nRampFramesBegin;
     int nRampFramesBlend;
     int nRampFramesEnd;
-    int sampleSizeBytes;
+    int sampleSizeBytesIn;
+    int sampleSizeBytesOut;
     int samplesPerFrame;
     int sendDataLength;
 

@@ -108,13 +108,20 @@ int getECCBytesForLength(int len) {
 
 }
 
-DataRxTx::DataRxTx(int aSampleRateOut, int aSampleRate, int aSamplesPerFrame, int aSampleSizeB, const char * text) {
-    sampleSizeBytes = aSampleSizeB;
-    sampleRate = aSampleRate;
+DataRxTx::DataRxTx(
+        int aSampleRateIn,
+        int aSampleRateOut,
+        int aSamplesPerFrame,
+        int aSampleSizeBytesIn,
+        int aSampleSizeBytesOut) {
+
+    sampleRateIn = aSampleRateIn;
     sampleRateOut = aSampleRateOut;
     samplesPerFrame = aSamplesPerFrame;
+    sampleSizeBytesIn = aSampleSizeBytesIn;
+    sampleSizeBytesOut = aSampleSizeBytesOut;
 
-    init(strlen(text), text);
+    init(0, "");
 }
 
 void DataRxTx::init(int textLength, const char * stext) {
@@ -130,7 +137,7 @@ void DataRxTx::init(int textLength, const char * stext) {
 
     isamplesPerFrame = 1.0f/samplesPerFrame;
     sendVolume = ((double)(paramVolume))/100.0f;
-    hzPerFrame = sampleRate/samplesPerFrame;
+    hzPerFrame = sampleRateIn/samplesPerFrame;
     ihzPerFrame = 1.0/hzPerFrame;
     framesPerTx = paramFramesPerTx;
 
@@ -228,9 +235,9 @@ void DataRxTx::init(int textLength, const char * stext) {
 }
 
 void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
-    int samplesPerFrameOut = (sampleRateOut/sampleRate)*samplesPerFrame;
-    if (sampleRateOut != sampleRate) {
-        printf("Resampling from %d Hz to %d Hz\n", (int) sampleRate, (int) sampleRateOut);
+    int samplesPerFrameOut = (sampleRateOut/sampleRateIn)*samplesPerFrame;
+    if (sampleRateOut != sampleRateIn) {
+        printf("Resampling from %d Hz to %d Hz\n", (int) sampleRateIn, (int) sampleRateOut);
     }
 
     while (hasData) {
@@ -238,7 +245,7 @@ void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
         std::fill(outputBlock.begin(), outputBlock.end(), 0.0f);
         std::uint16_t nFreq = 0;
 
-        if (sampleRateOut != sampleRate) {
+        if (sampleRateOut != sampleRateIn) {
             for (int k = 0; k < nDataBitsPerTx; ++k) {
                 double freq = freqStart_hz + freqDelta_hz*k;
 
@@ -349,12 +356,14 @@ void DataRxTx::send(const CBQueueAudio & cbQueueAudio) {
             outputBlock[i] *= scale;
         }
 
+        // todo : support for non-int16 output
         for (int i = 0; i < samplesPerFrameOut; ++i) {
             outputBlock16[frameId*samplesPerFrameOut + i] = std::round(32000.0*outputBlock[i]);
         }
+
         ++frameId;
     }
-    cbQueueAudio(outputBlock16.data(), frameId*samplesPerFrameOut*sampleSizeBytes);
+    cbQueueAudio(outputBlock16.data(), frameId*samplesPerFrameOut*sampleSizeBytesOut);
 }
 
 void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
@@ -369,7 +378,10 @@ void DataRxTx::receive(const CBDequeueAudio & CBDequeueAudio) {
 
     while (hasData == false) {
         // read capture data
-        auto nBytesRecorded = CBDequeueAudio(sampleAmplitude.data(), samplesPerFrame*sampleSizeBytes);
+        //
+        // todo : support for non-float input
+        auto nBytesRecorded = CBDequeueAudio(sampleAmplitude.data(), samplesPerFrame*sampleSizeBytesIn);
+
         if (nBytesRecorded != 0) {
             {
                 sampleAmplitudeHistory[historyId] = sampleAmplitude;
